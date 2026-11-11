@@ -6,10 +6,18 @@
 
 const char* AP_SSID = "IoT-GW";
 
-const char* STA_SSID = "ASUSiPhone";
+// Upstream WiFi (internet). secrets.h can override it.
+#ifndef STA_SSID
+#define STA_SSID "ASUSiPhone"
+#endif
 
-const char* MQTT_HOST = "mqtt3.thingspeak.com";
-const int   MQTT_PORT = 1883;
+// Broker defaults to ThingSpeak; secrets.h can override MQTT_HOST / MQTT_PORT (e.g. a local Mosquitto).
+#ifndef MQTT_HOST
+#define MQTT_HOST "mqtt3.thingspeak.com"
+#endif
+#ifndef MQTT_PORT
+#define MQTT_PORT 1883
+#endif
 const char* TOPIC_PUBLISH  = "channels/3569731/publish";
 const char* TOPIC_PUMP_CMD = "channels/3570144/subscribe/fields/field1";
 
@@ -32,6 +40,16 @@ unsigned long lastMqttTry = 0;
 
 void handleData() {
   String id = server.arg("id");
+
+  // From the base station: one ESP-NOW node's JSON, forwarded unchanged.
+  // TODO: map fields to ThingSpeak once the node's payload is decided.
+  if (id == "base") {
+    server.send(200, "text/plain", "ok");
+    Serial.printf("HTTP  base mac=%s rssi=%s data=%s\n", server.arg("mac").c_str(),
+                  server.arg("rssi").c_str(), server.arg("data").c_str());
+    return;
+  }
+
   float soil = server.arg("soil").toFloat();
 
   if (id == "node1") {
@@ -86,6 +104,11 @@ void forwardCommand() {
 
 void setup() {
   Serial.begin(115200);
+#if ARDUINO_USB_CDC_ON_BOOT
+  Serial.setTxTimeoutMs(50);  // native USB: don't stall if no monitor is reading
+#endif
+  delay(1500);  // let the USB monitor reconnect before the first lines
+  Serial.printf("STA   joining %s...\n", STA_SSID);
 
   WiFi.mode(WIFI_AP_STA);
   WiFi.softAP(AP_SSID, AP_PASS);
