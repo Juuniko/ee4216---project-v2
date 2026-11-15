@@ -1,9 +1,10 @@
 // BME280 node: ESP32-S3. Each wake: read BME280 -> send JSON over ESP-NOW -> deep sleep 2 s.
-// Libraries: Adafruit BME280 Library.
+// Power-draw test, compared against BME280NodeWiFi. Adapted from my CS3237 power-test code.
+// Libraries: Adafruit BME280 Library, libraries/EspNowJsonLink (in this repo).
 
 #include <Wire.h>
 #include <Adafruit_BME280.h>
-#include <EspNowJsonLink.h>  // CS3237/libraries/EspNowJsonLink
+#include <EspNowJsonLink.h>  // libraries/EspNowJsonLink
 #include "secrets.h"         // BASE_STATION_MAC; copy secrets.h.example to secrets.h
 
 #define I2C_SDA   1

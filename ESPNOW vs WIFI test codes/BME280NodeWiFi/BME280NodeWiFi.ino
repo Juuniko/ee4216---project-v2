@@ -1,5 +1,6 @@
 // BME280 node, WiFi version: ESP32-S3. Each wake: read BME280 -> connect WiFi -> publish JSON
 // straight to the MQTT broker (no base station) -> deep sleep 2 s.
+// Power-draw test, compared against BME280NodeEspNow. Adapted from my CS3237 power-test code.
 // Libraries: Adafruit BME280 Library. MQTT uses the ESP-IDF client built into the core.
 
 #include <Wire.h>
@@ -32,16 +33,16 @@ void setup() {
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   while (WiFi.status() != WL_CONNECTED && millis() < 10000) delay(10);
 
-  // Same topic the base station uses for edge nodes: cs3237/<MAC>/data
+  // Topic: ee4216/<MAC>/data (only used for this power test)
   String mac = WiFi.macAddress();
   mac.replace(":", "");
-  String topic = "cs3237/" + mac + "/data";
+  String topic = "ee4216/" + mac + "/data";
 
   esp_mqtt_client_config_t cfg = {};
   cfg.broker.address.transport = MQTT_TRANSPORT_OVER_TCP;
   cfg.broker.address.hostname = MQTT_HOST;
   cfg.broker.address.port = MQTT_PORT;
-  cfg.credentials.client_id = "cs3237-bme280";
+  cfg.credentials.client_id = "ee4216-bme280";
   cfg.credentials.username = MQTT_USER;
   cfg.credentials.authentication.password = MQTT_PASSWORD;
   esp_mqtt_client_handle_t mqtt = esp_mqtt_client_init(&cfg);
