@@ -1,15 +1,16 @@
-// Base station: receives JSON from edge nodes over ESP-NOW and forwards it to the
+// Base station: receives node2's BME280 JSON over ESP-NOW and forwards the readings to the
 // gateway over HTTP, the same way node1 does (joins the gateway's AP, POSTs to /api/data).
 //
-//   [node] --ESP-NOW--> [basestation] --HTTP POST--> [gateway] --MQTT--> ThingSpeak
+//   [node2] --ESP-NOW--> [basestation] --HTTP POST--> [gateway] --MQTT--> ThingSpeak
 //
 // ESP-NOW runs on whatever channel the IoT-GW AP is on (which follows the gateway's
 // hotspot). Nodes using EspNowSender scan channels, so they find it on their own.
-// Library: libraries/EspNowJsonLink (in this repo).
+// Libraries: libraries/EspNowJsonLink (in this repo), ArduinoJson (v7).
 
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <esp_mac.h>
+#include <ArduinoJson.h>
 #include <EspNowJsonLink.h>
 #include "secrets.h"
 
@@ -24,30 +25,36 @@ const uint16_t HTTP_TIMEOUT_MS = 2000;
 
 EspNowReceiver espnow;  // queue mode: messages are read in loop()
 
-// Form-encodes a value (the JSON payload contains { } " : , which must be escaped).
-String urlEncode(const char* s) {
-  String out;
-  const char* hex = "0123456789ABCDEF";
-  for (; *s; s++) {
-    char c = *s;
-    if (isalnum((unsigned char)c) || c == '-' || c == '_' || c == '.' || c == '~') {
-      out += c;
-    } else {
-      out += '%';
-      out += hex[(c >> 4) & 0xF];
-      out += hex[c & 0xF];
-    }
-  }
-  return out;
+// Appends "&key=value" if the node's JSON has a number for `key`.
+// node2 sends null when the sensor failed; that field is left out so ThingSpeak gets no value.
+bool addField(String& body, JsonDocument& doc, const char* key) {
+  JsonVariant v = doc[key];
+  if (!v.is<float>()) return false;
+  body += "&";
+  body += key;
+  body += "=";
+  body += String(v.as<float>(), 2);
+  return true;
 }
 
-// Same endpoint and encoding as node1: id=base&mac=<node MAC>&rssi=<dBm>&data=<node JSON>
+// Same endpoint and encoding as node1: id=base&temp=<degC>&RH=<%>&hPa=<hPa>
 void forwardToGateway(const EspNowMessage& msg) {
   char mac[13];
   msg.macString(mac);
 
-  String body = "id=base&mac=" + String(mac) + "&rssi=" + String(msg.rssi) +
-                "&data=" + urlEncode(msg.json);
+  JsonDocument doc;
+  DeserializationError err = deserializeJson(doc, msg.json, msg.len);
+  if (err) {
+    Serial.printf("BAD   %s %s  (JSON: %s)\n", mac, msg.json, err.c_str());
+    return;
+  }
+
+  String body = "id=base";
+  int fields = addField(body, doc, "temp") + addField(body, doc, "RH") + addField(body, doc, "hPa");
+  if (fields == 0) {
+    Serial.printf("SKIP  %s %s  (no readings)\n", mac, msg.json);
+    return;
+  }
 
   HTTPClient http;
   http.setTimeout(HTTP_TIMEOUT_MS);
@@ -56,7 +63,7 @@ void forwardToGateway(const EspNowMessage& msg) {
   int code = http.POST(body);
   http.end();
 
-  Serial.printf("RX    %s (%d dBm) %s  POST -> %d\n", mac, msg.rssi, msg.json, code);
+  Serial.printf("RX    %s (%d dBm) %s  POST %s -> %d\n", mac, msg.rssi, msg.json, body.c_str(), code);
 }
 
 void setup() {

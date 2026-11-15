@@ -6,18 +6,10 @@
 
 const char* AP_SSID = "IoT-GW";
 
-// Upstream WiFi (internet). secrets.h can override it.
-#ifndef STA_SSID
-#define STA_SSID "ASUSiPhone"
-#endif
+const char* STA_SSID = "ASUSiPhone";
 
-// Broker defaults to ThingSpeak; secrets.h can override MQTT_HOST / MQTT_PORT (e.g. a local Mosquitto).
-#ifndef MQTT_HOST
-#define MQTT_HOST "mqtt3.thingspeak.com"
-#endif
-#ifndef MQTT_PORT
-#define MQTT_PORT 1883
-#endif
+const char* MQTT_HOST = "mqtt3.thingspeak.com";
+const int   MQTT_PORT = 1883;
 const char* TOPIC_PUBLISH  = "channels/3569731/publish";
 const char* TOPIC_PUMP_CMD = "channels/3570144/subscribe/fields/field1";
 
@@ -28,6 +20,11 @@ WiFiClient netClient;
 PubSubClient mqtt(netClient);
 
 float node1Soil = 0;
+
+// From the base station (node2's BME280). Each is published once per new reading;
+// a field the base station leaves out (sensor error) is not published.
+float envTemp = 0, envRH = 0, envHPa = 0;
+bool  hasTemp = false, hasRH = false, hasHPa = false;
 
 String pendingCmd = "";
 bool   hasResult  = false;
@@ -41,12 +38,13 @@ unsigned long lastMqttTry = 0;
 void handleData() {
   String id = server.arg("id");
 
-  // From the base station: one ESP-NOW node's JSON, forwarded unchanged.
-  // TODO: map fields to ThingSpeak once the node's payload is decided.
   if (id == "base") {
+    if (server.hasArg("temp")) { envTemp = server.arg("temp").toFloat(); hasTemp = true; }
+    if (server.hasArg("RH"))   { envRH   = server.arg("RH").toFloat();   hasRH   = true; }
+    if (server.hasArg("hPa"))  { envHPa  = server.arg("hPa").toFloat();  hasHPa  = true; }
     server.send(200, "text/plain", "ok");
-    Serial.printf("HTTP  base mac=%s rssi=%s data=%s\n", server.arg("mac").c_str(),
-                  server.arg("rssi").c_str(), server.arg("data").c_str());
+    Serial.printf("HTTP  base temp=%s RH=%s hPa=%s\n", server.arg("temp").c_str(),
+                  server.arg("RH").c_str(), server.arg("hPa").c_str());
     return;
   }
 
@@ -104,11 +102,6 @@ void forwardCommand() {
 
 void setup() {
   Serial.begin(115200);
-#if ARDUINO_USB_CDC_ON_BOOT
-  Serial.setTxTimeoutMs(50);  // native USB: don't stall if no monitor is reading
-#endif
-  delay(1500);  // let the USB monitor reconnect before the first lines
-  Serial.printf("STA   joining %s...\n", STA_SSID);
 
   WiFi.mode(WIFI_AP_STA);
   WiFi.softAP(AP_SSID, AP_PASS);
@@ -152,6 +145,9 @@ void loop() {
       payload += "&field2=" + String(pumpResult);
       hasResult = false;
     }
+    if (hasTemp) { payload += "&field3=" + String(envTemp, 2); hasTemp = false; }
+    if (hasRH)   { payload += "&field4=" + String(envRH, 2);   hasRH   = false; }
+    if (hasHPa)  { payload += "&field5=" + String(envHPa, 2);  hasHPa  = false; }
     bool ok = mqtt.publish(TOPIC_PUBLISH, payload.c_str());
     Serial.printf("MQTT  publish %s -> %s\n", payload.c_str(), ok ? "ok" : "fail");
   }
