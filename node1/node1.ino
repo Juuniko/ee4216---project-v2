@@ -10,7 +10,7 @@ IPAddress gatewayIP(192, 168, 4, 1);
 IPAddress subnet(255, 255, 255, 0);
 
 const int SOIL_PIN = 4;
-const int RAW_DRY = 2715;
+const int RAW_DRY = 2745;
 const int RAW_WET = 1600;
 
 const int RELAY_PIN = 5;
@@ -21,6 +21,8 @@ WebServer server(80);
 
 const unsigned long SEND_INTERVAL = 5000;
 unsigned long lastSend = 0;
+const int MAX_FAILS = 3;
+int failCount = 0;
 
 void handleCmd() {
   String value = server.arg("pump");
@@ -42,8 +44,8 @@ void handleCmd() {
 void setup() {
   Serial.begin(115200);
 
-  digitalWrite(RELAY_PIN, RELAY_OFF);
   pinMode(RELAY_PIN, OUTPUT);
+  digitalWrite(RELAY_PIN, RELAY_OFF);
 
   WiFi.mode(WIFI_STA);
   WiFi.config(nodeIP, gatewayIP, subnet);
@@ -77,5 +79,15 @@ void loop() {
     http.end();
 
     Serial.printf("raw=%d soil=%.1f%%  POST -> %d\n", raw, soil, code);
+
+    if (code == 200) {
+      failCount = 0;
+    } else {
+      failCount++;
+    }
+    if (failCount >= MAX_FAILS) {
+      failCount = 0;
+      WiFi.reconnect();
+    }
   }
 }

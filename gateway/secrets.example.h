@@ -1,0 +1,5 @@
+#define AP_PASS "your-gateway-ap-password"
+#define STA_PASS "your-hotspot-password"
+#define MQTT_CLIENT_ID "your-mqtt-client-id"
+#define MQTT_USERNAME  "your-mqtt-username"
+#define MQTT_PASSWORD  "your-mqtt-password"
